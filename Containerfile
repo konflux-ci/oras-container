@@ -24,7 +24,7 @@ RUN mkdir /licenses && mv LICENSE /licenses/LICENSE
 
 FROM quay.io/konflux-ci/yq:latest@sha256:974dea6375ee9df561ffd3baf994db2b61777a71f3bcf0050c5dca91ac9b3430 as yq
 
-FROM registry.access.redhat.com/ubi9:latest@sha256:d98fdae16212df566150ac975cab860cd8d2cb1b322ed9966d09a13e219112e9
+FROM registry.access.redhat.com/ubi9:latest@sha256:1ee4d8c50d14d9c9e9229d9a039d793fcbc9aa803806d194c957a397cf1d2b17
 RUN mkdir /licenses
 RUN useradd -r  --uid=65532 --create-home --shell /bin/bash oras
 
