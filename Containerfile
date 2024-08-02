@@ -35,6 +35,8 @@ COPY --from=builder /licenses/LICENSE /licenses/LICENSE
 COPY hack/retry.sh /usr/local/bin/retry
 COPY hack/select-oci-auth.sh /usr/local/bin/select-oci-auth
 
+RUN dnf -y install xxd
+
 WORKDIR /home/oras
 USER 65532:65532
 
