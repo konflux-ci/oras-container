@@ -11,6 +11,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+FROM quay.io/konflux-ci/yq:latest@sha256:974dea6375ee9df561ffd3baf994db2b61777a71f3bcf0050c5dca91ac9b3430 as yq
+
 FROM brew.registry.redhat.io/rh-osbs/openshift-golang-builder:rhel_9_1.22 as builder
 ARG TARGETPLATFORM
 #RUN dnf -y install git make && dnf -y clean all
@@ -21,8 +23,6 @@ RUN go mod vendor
 RUN make "build-$(echo $TARGETPLATFORM | sed s/\\/v8// | tr / -)"
 RUN mv ${ORASPKG}/oras/bin/$(echo $TARGETPLATFORM | sed s/\\/v8//)/oras /usr/bin/oras
 RUN mkdir /licenses && mv LICENSE /licenses/LICENSE
-
-FROM quay.io/konflux-ci/yq:latest@sha256:974dea6375ee9df561ffd3baf994db2b61777a71f3bcf0050c5dca91ac9b3430 as yq
 
 FROM registry.access.redhat.com/ubi9:latest@sha256:d98fdae16212df566150ac975cab860cd8d2cb1b322ed9966d09a13e219112e9
 RUN mkdir /licenses
