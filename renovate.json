@@ -1,4 +1,5 @@
 {
+  "updateNotScheduled": false,
   "schedule": [
     "after 5pm on sunday"
   ]
