@@ -22,7 +22,7 @@ RUN make "build-$(echo $TARGETPLATFORM | sed s/\\/v8// | tr / -)"
 RUN mv ${ORASPKG}/oras/bin/$(echo $TARGETPLATFORM | sed s/\\/v8//)/oras /usr/bin/oras
 RUN mkdir /licenses && mv LICENSE /licenses/LICENSE
 
-FROM quay.io/konflux-ci/yq:latest@sha256:e0d498c054d27dbcd4740427b1a1600b5384d049ff6463812042f003c5727222 as yq
+FROM quay.io/konflux-ci/yq:latest@sha256:2e1c94e3c5fce4103e8faa6e3cdf87010d21bd0abaa23cb26acfd3d82315fc0a as yq
 
 FROM registry.access.redhat.com/ubi9:latest@sha256:b00d5990a00937bd1ef7f44547af6c7fd36e3fd410e2c89b5d2dfc1aff69fe99
 RUN mkdir /licenses
