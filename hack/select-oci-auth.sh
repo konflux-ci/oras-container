@@ -22,11 +22,8 @@ set -o pipefail
 
 original_ref="$1"
 
-# Remove digest from image reference
-ref="${original_ref/@*}"
-
-# Remove tag from image reference while making sure optional registry port is taken into account
-ref="$(echo -n $ref | sed 's_/\(.*\):\(.*\)_/\1_g')"
+# Get the OCI object reference without a tag and digest
+ref="$(get-reference-base ${original_ref})"
 
 registry="${ref/\/*}"
 

@@ -15,15 +15,19 @@ spec:
         params:
           - name: SNAPSHOT
         steps:
-          - image: registry.redhat.io/openshift4/ose-cli:latest
+          - name: test
+            image: registry.redhat.io/openshift4/ose-cli:latest
             env:
               - name: SNAPSHOT
                 value: $(params.SNAPSHOT)
             script: |
+              #!/bin/bash
               echo -e "Grabbing a copy of yq"
               oc image extract --confirm quay.io/konflux-ci/yq:latest --path=/usr/bin/yq:/usr/bin/. && chmod +x /usr/bin/yq
 
               echo -e "Testing Snapshot:\n ${SNAPSHOT}"
+              TESTS_FAILED="false"
+              failure_num=0
 
               IMAGE=$(echo ${SNAPSHOT} | yq -r '.components[].containerImage')
               echo -e "Found image ${IMAGE}"
@@ -33,28 +37,233 @@ spec:
               oc image extract --confirm ${IMAGE} --path=/usr/bin/yq:/usr/bin/. && chmod +x /usr/bin/yq
               oc image extract --confirm ${IMAGE} --path=/usr/local/bin/retry:/usr/local/bin/. && chmod +x /usr/local/bin/retry
               oc image extract --confirm ${IMAGE} --path=/usr/local/bin/select-oci-auth:/usr/local/bin/. && chmod +x /usr/local/bin/select-oci-auth
+              oc image extract --confirm ${IMAGE} --path=/usr/local/bin/attach-helper:/usr/local/bin/. && chmod +x /usr/local/bin/attach-helper
+              oc image extract --confirm ${IMAGE} --path=/usr/local/bin/oras-options:/usr/local/bin/. && chmod +x /usr/local/bin/oras-options
+              oc image extract --confirm ${IMAGE} --path=/usr/local/bin/get-reference-base:/usr/local/bin/. && chmod +x /usr/local/bin/get-reference-base
 
               REPO=$(echo ${IMAGE} | awk -F '@' '{ print $1 }')
               TAG="$(echo ${IMAGE} | awk -F '@' '{print $2 }' | sed s/:/-/).test"
 
+              ## Test isolating the OCI object registry and repository
+              echo -n "quay.io/test/foo" > base_reference
+              echo -n "quay.io:443/test/foo" > base_reference_port
+              get-reference-base quay.io:443/test/foo:bar > test_base1
+              get-reference-base quay.io:443/test/foo@sha256:aaaa > test_base2
+              get-reference-base quay.io:443/test/foo:bar@sha256:aaaa > test_base3
+              get-reference-base quay.io/test/foo:bar@sha256:aaaa > test_base4
+              get-reference-base quay.io/test/foo:bar > test_base5
+              get-reference-base quay.io/test/foo@sha256:aaaa > test_base6
+
+              if [[ $(cmp -s base_reference_port test_base1) -ne 0 ]]; then
+                echo "ERROR: Incorrect reference isolation with registry port and tag"
+                TESTS_FAILED="true"
+                failure_num=$((failure_num + 1))
+              fi
+              if [[ $(cmp -s base_reference_port test_base2) -ne 0 ]]; then
+                echo "ERROR: Incorrect reference isolation with registry port and digest"
+                TESTS_FAILED="true"
+                failure_num=$((failure_num + 1))
+              fi
+              if [[ $(cmp -s base_reference_port test_base3) -ne 0 ]]; then
+                echo "ERROR: Incorrect reference isolation with registry port, tag, and digest"
+                TESTS_FAILED="true"
+                failure_num=$((failure_num + 1))
+              fi
+              if [[ $(cmp -s base_reference test_base4) -ne 0 ]]; then
+                echo "ERROR: Incorrect reference isolation with tag and digest"
+                TESTS_FAILED="true"
+                failure_num=$((failure_num + 1))
+              fi
+              if [[ $(cmp -s base_reference test_base5) -ne 0 ]]; then
+                echo "ERROR: Incorrect reference isolation with tag"
+                TESTS_FAILED="true"
+                failure_num=$((failure_num + 1))
+              fi
+              if [[ $(cmp -s base_reference test_base6) -ne 0 ]]; then
+                echo "ERROR: Incorrect reference isolation with digest"
+                TESTS_FAILED="true"
+                failure_num=$((failure_num + 1))
+              fi
+
+              ## Test isolating registry auth and pushing
               echo "Extracting relevant OCI auth for $REPO"
               select-oci-auth $REPO > auth.json
 
+              # Test pushing directly with oras
               echo "Pushing foo.txt to $REPO:$TAG"
               echo -n "hello world" > foo.txt
               oras push --no-tty --registry-config auth.json $REPO:$TAG foo.txt:text/plain
 
-              rm foo.txt
+              mv foo.txt check.txt
 
+              # Test pulling directly with oras, ensuring that the file content is unchanged
               echo "Pulling foo.txt to $REPO:$TAG"
               oras pull --no-tty --registry-config auth.json $REPO:$TAG
               OUTPUT=$(cat foo.txt)
 
-              echo "Expecting hello world"
-              echo "Received ${OUTPUT}"
-
-              if [ "$OUTPUT" == "hello world" ]; then
-                exit 0
+              diff foo.txt check.txt > diff.txt
+              if [ $? -eq 0 ]; then
+                echo "Recieved the expected output"
               else
+                TESTS_FAILED="true"
+                failure_num=$((failure_num + 1))
+                echo "ERROR: Expecting hello world"
+                echo "Received ${OUTPUT}"
+              fi
+
+              ## Test attaching simple files
+              attach-helper --subject $REPO:$TAG --digestfile foo-digest.txt foo.txt
+              attach-helper --subject $REPO:$TAG --artifact-type "application/vnd.konflux-ci.test-artifact" --media-type-name "foobar" check.txt
+
+              ## Ensure that the files are unmodified and that the digest is set properly
+              diff foo.txt check.txt > diff.txt
+              if [ ! $? -eq 0 ]; then
+                TESTS_FAILED="true"
+                failure_num=$((failure_num + 1))
+                echo "ERROR: Files were modified when attaching."
+              fi
+
+              ## Check to make sure that all attachments have happened properly. Looking at both the total number
+              ## and the number for each artifact type (one custom, one default)
+              mkdir discoveries
+              oras discover -v --format tree $REPO:$TAG | tee discoveries/all_attached
+              oras discover -v --format tree --artifact-type "application/vnd.konflux-ci.attached-artifact" $REPO:$TAG > discoveries/default_attached
+              oras discover -v --format tree --artifact-type "application/vnd.konflux-ci.test-artifact" $REPO:$TAG > discoveries/custom_attached
+
+              if [[ "$(cat discoveries/all_attached | wc -l)" == "7" ]]; then
+                echo "Two artifacts attached"
+              else
+                echo "ERROR: All attached artifacts not found"
+                TESTS_FAILED="true"
+                failure_num=$((failure_num + 1))
+              fi
+              if [[ "$(cat discoveries/default_attached | wc -l)" == "4" ]]; then
+                echo "One artifact attached with type application/vnd.konflux-ci.attached-artifact"
+              else
+                echo "ERROR: Artifact attachment application/vnd.konflux-ci.attached-artifact not found"
+                TESTS_FAILED="true"
+                failure_num=$((failure_num + 1))
+              fi
+              if [[ "$(cat discoveries/custom_attached | wc -l)" == "4" ]]; then
+                echo "One artifact attached with type application/vnd.konflux-ci.test-artifact"
+              else
+                echo "ERROR: Artifact attachment application/vnd.konflux-ci.test-artifact not found"
+                TESTS_FAILED="true"
+                failure_num=$((failure_num + 1))
+              fi
+
+              ## Check to make sure that we have found each of the media types used. One is custom, another is auto.
+              oras manifest fetch --pretty $REPO:$TAG
+              referenced_artifacts=$( oras discover --format json $REPO:$TAG | yq -e '.manifests[].reference')
+              found_type1="false"
+              found_type2="false"
+              echo "Looking at mediaType for all referenced artifacts"
+              for artifact in ${referenced_artifacts[@]}; do
+                oras manifest fetch --pretty $artifact
+                mediaType=$(oras manifest fetch --pretty $artifact | yq -e '.layers[].mediaType')
+                if [[ "$mediaType" == "application/vnd.konflux-ci.attached-artifact.foo+txt" ]]; then
+                  found_type1="true"
+                fi
+                if [[ "$mediaType" == "application/vnd.konflux-ci.test-artifact.foobar" ]]; then
+                  found_type2="true"
+                fi
+              done
+              if [[ "$found_type1" == "true" ]]; then
+                echo "Found one application/vnd.konflux-ci.attached-artifact.foo+txt mediaType"
+              else
+                echo "ERROR: Didn't find application/vnd.konflux-ci.attached-artifact.foo+txt mediaType"
+                TESTS_FAILED="true"
+                failure_num=$((failure_num + 1))
+              fi
+              if [[ "$found_type2" == "true" ]]; then
+                echo "Found one application/vnd.konflux-ci.test-artifact.foobar mediaType"
+              else
+                echo "ERROR: Didn't find application/vnd.konflux-ci.test-artifact.foobar mediaType"
+                TESTS_FAILED="true"
+                failure_num=$((failure_num + 1))
+              fi
+
+              ## Test to make sure that digest matches
+              digest_pullspec=$(oras discover --format json --artifact-type "application/vnd.konflux-ci.attached-artifact" $REPO:$TAG | yq -e '.manifests[].reference')
+              digestfile_content=$(cat foo-digest.txt)
+              if [ "${digest_pullspec}" == "${REPO}@sha256:${digestfile_content}" ]; then
+                echo "Digestfile properly created"
+              else
+                echo "ERROR: Reported digest ${digestfile_content} doesn't match ${digest_pullspec}"
+                cat foo-digest.txt
+                TESTS_FAILED="true"
+                failure_num=$((failure_num + 1))
+              fi
+
+              # Test attaching directories
+              attach-helper --subject $REPO:$TAG --artifact-type "application/vnd.konflux-ci.test-directory" --digestfile discoveries-digest.txt discoveries
+              mv discoveries discoveries-reference
+
+              ## Ensure that the the artifact (custom) and media (auto) types are as expected for directories
+              directory_digest=$(cat discoveries-digest.txt)
+              oras discover --format json --artifact-type "application/vnd.konflux-ci.test-directory" $REPO:$TAG | yq -e '.manifests[].reference' > referenced_directory_artifacts
+              if [ ! "$(cat referenced_directory_artifacts | wc -l)" == "1" ]; then
+                echo "ERROR: Improper number of referenced artifacts for type application/vnd.konflux-ci.test-directory"
+                cat referenced_directory_artifacts
+                TESTS_FAILED="true"
+                failure_num=$((failure_num + 1))
+              fi
+              artifactType=$(oras manifest fetch --pretty $(cat referenced_directory_artifacts | head -n 1) | yq -e '.artifactType')
+              mediaType=$(oras manifest fetch --pretty $(cat referenced_directory_artifacts | head -n 1) | yq -e '.layers[].mediaType')
+              if [[ "$artifactType" == "application/vnd.konflux-ci.test-directory" ]]; then
+                echo "Directory artifactType matches"
+              else
+                echo "ERROR: Directory artifact type was ${artifactType}/nexpected: application/vnd.konflux-ci.test-directory"
+                TESTS_FAILED="true"
+                failure_num=$((failure_num + 1))
+              fi
+              if [[ "$mediaType" == "application/vnd.konflux-ci.test-directory.discoveries" ]]; then
+                echo "Directory mediaType matches"
+              else
+                echo "ERROR: Directory media type was ${mediaType}/nexpected: application/vnd.konflux-ci.test-directory.discoveries"
+                TESTS_FAILED="true"
+                failure_num=$((failure_num + 1))
+              fi
+
+              # Ensure that the manifest digest matches for a directory 
+              directory_shasum=$(oras manifest fetch $(cat referenced_directory_artifacts | head -n 1) | sha256sum | tr -d "[:space:]-")
+              if [ "${directory_shasum}" == "${directory_digest}" ]; then
+                echo "Directory blob digests match"
+              else
+                echo "ERROR: Directory blob digest does not match returned value"
+                TESTS_FAILED="true"
+                failure_num=$((failure_num + 1))
+              fi
+
+              ## Ensure that directory content matches
+              oras pull ${REPO}@sha256:${directory_digest}
+              diff discoveries discoveries-reference > dir_diff.txt
+              if [ $? -eq 0 ]; then
+                echo "Fetched directory matches"
+              else
+                TESTS_FAILED="true"
+                failure_num=$((failure_num + 1))
+                echo "ERROR: Fetched directory does not match"
+                cat dir_diff.txt
+              fi
+
+              ## No need to test this right now. If it doesn't work, the script will error out. If it does, we will support it!
+              # ## Test attaching multiple files
+              # echo "one" > one.txt
+              # echo "two" > two.txt
+              # attach-helper --subject $REPO:$TAG --artifact-type "application/vnd.konflux-ci.multiple-artifacts" one.txt two.txt 2>/dev/null
+              # if [ "$?" == "2" ]; then
+              #   echo "Attaching multiple artifacts correctly failed."
+              # else
+              #   echo "ERROR: We shouldn't be able to attach multiple artifacts"
+              #   TESTS_FAILED="true"
+              #   failure_num=$((failure_num + 1))
+              # fi
+
+              if [ "$TESTS_FAILED" == "true" ]; then
+                echo "$failure_num tests failed."
                 exit 1
+              else
+                echo "All tests passed, congrats!"
+                exit 0
               fi
