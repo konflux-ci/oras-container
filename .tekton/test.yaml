@@ -24,6 +24,8 @@ spec:
               oc image extract --confirm quay.io/konflux-ci/yq:latest --path=/usr/bin/yq:/usr/bin/. && chmod +x /usr/bin/yq
 
               echo -e "Testing Snapshot:\n ${SNAPSHOT}"
+              TESTS_FAILED="false"
+              failure_num=0
 
               IMAGE=$(echo ${SNAPSHOT} | yq -r '.components[].containerImage')
               echo -e "Found image ${IMAGE}"
@@ -33,6 +35,8 @@ spec:
               oc image extract --confirm ${IMAGE} --path=/usr/bin/yq:/usr/bin/. && chmod +x /usr/bin/yq
               oc image extract --confirm ${IMAGE} --path=/usr/local/bin/retry:/usr/local/bin/. && chmod +x /usr/local/bin/retry
               oc image extract --confirm ${IMAGE} --path=/usr/local/bin/select-oci-auth:/usr/local/bin/. && chmod +x /usr/local/bin/select-oci-auth
+              oc image extract --confirm ${IMAGE} --path=/usr/local/bin/attach-helper:/usr/local/bin/. && chmod +x /usr/local/bin/attach-helper
+              oc image extract --confirm ${IMAGE} --path=/usr/local/bin/oras-options:/usr/local/bin/. && chmod +x /usr/local/bin/oras-options
 
               REPO=$(echo ${IMAGE} | awk -F '@' '{ print $1 }')
               TAG="$(echo ${IMAGE} | awk -F '@' '{print $2 }' | sed s/:/-/).test"
@@ -40,21 +44,178 @@ spec:
               echo "Extracting relevant OCI auth for $REPO"
               select-oci-auth $REPO > auth.json
 
+              # Test pushing directly with oras
               echo "Pushing foo.txt to $REPO:$TAG"
               echo -n "hello world" > foo.txt
               oras push --no-tty --registry-config auth.json $REPO:$TAG foo.txt:text/plain
 
-              rm foo.txt
+              mv foo.txt check.txt
 
+              # Test pulling directly with oras, ensuring that the file content is unchanged
               echo "Pulling foo.txt to $REPO:$TAG"
               oras pull --no-tty --registry-config auth.json $REPO:$TAG
               OUTPUT=$(cat foo.txt)
 
-              echo "Expecting hello world"
-              echo "Received ${OUTPUT}"
-
-              if [ "$OUTPUT" == "hello world" ]; then
-                exit 0
+              diff foo.txt check.txt > diff.txt
+              if [ $? -eq 0 ]; then
+                echo "Recieved the expected output"
               else
+                TESTS_FAILED="true"
+                failure_num=$((failure_num + 1))
+                echo "ERROR: Expecting hello world"
+                echo "Received ${OUTPUT}"
+              fi
+
+              # Test attaching simple files
+              attach-helper --subject $REPO:$TAG foo.txt,foo-digest.txt
+              attach-helper --subject $REPO:$TAG --artifact-type "application/vnd.konflux-ci.test-artifact" --media-type-name "foobar" check.txt
+
+              ## Ensure that the files are unmodified and that the digest is set properly
+              diff foo.txt check.txt > diff.txt
+              if [ ! $? -eq 0 ]; then
+                TESTS_FAILED="true"
+                failure_num=$((failure_num + 1))
+                echo "ERROR: Files were modified when attaching."
+              fi
+              sha256sum_verify="$(sha256sum "foo.txt")"
+              digest_verify="${sha256sum_verify/ */}"
+              digest_result=$(cat foo-digest.txt)
+              if [[ "oci:${REPO}@sha256:${digest_verify}" == "$digest_result" ]]; then
+                echo "Digest properly created"
+              else
+                echo "ERROR: Reported doesn't match oci:${REPO}@sha256:${digest_verify}"
+                cat foo-digest.txt
+                TESTS_FAILED="true"
+                failure_num=$((failure_num + 1))
+              fi
+
+              ## Check to make sure that all attachments have happened properly. Looking at both the total number
+              ## and the number for each artifact type (one custom, one default)
+              mkdir discoveries
+              oras discover -v --format tree $REPO:$TAG | tee discoveries/all_attached
+              oras discover -v --format tree --artifact-type "application/vnd.konflux-ci.attached-artifact" $REPO:$TAG > discoveries/default_attached
+              oras discover -v --format tree --artifact-type "application/vnd.konflux-ci.test-artifact" $REPO:$TAG > discoveries/custom_attached
+
+              if [[ "$(cat discoveries/all_attached | wc -l)" == "7" ]]; then
+                echo "Two artifacts attached"
+              else
+                echo "ERROR: All attached artifacts not found"
+                TESTS_FAILED="true"
+                failure_num=$((failure_num + 1))
+              fi
+              if [[ "$(cat discoveries/default_attached | wc -l)" == "4" ]]; then
+                echo "One artifact attached with type application/vnd.konflux-ci.attached-artifact"
+              else
+                echo "ERROR: Artifact attachment application/vnd.konflux-ci.attached-artifact not found"
+                TESTS_FAILED="true"
+                failure_num=$((failure_num + 1))
+              fi
+              if [[ "$(cat discoveries/custom_attached | wc -l)" == "4" ]]; then
+                echo "One artifact attached with type application/vnd.konflux-ci.test-artifact"
+              else
+                echo "ERROR: Artifact attachment application/vnd.konflux-ci.test-artifact not found"
+                TESTS_FAILED="true"
+                failure_num=$((failure_num + 1))
+              fi
+
+              ## Check to make sure that we have found each of the media types used. One is custom, another is auto.
+              oras manifest fetch --pretty $REPO:$TAG
+              referenced_artifacts=$( oras discover --format json $REPO:$TAG | yq -e '.manifests[].reference')
+              found_type1="false"
+              found_type2="false"
+              echo "Looking at mediaType for all referenced artifacts"
+              for artifact in ${referenced_artifacts[@]}; do
+                oras manifest fetch --pretty $artifact
+                mediaType=$(oras manifest fetch --pretty $artifact | yq -e '.layers[].mediaType')
+                if [[ "$mediaType" == "application/vnd.konflux-ci.attached-artifact.foo+txt" ]]; then
+                  found_type1="true"
+                fi
+                if [[ "$mediaType" == "application/vnd.konflux-ci.test-artifact.foobar" ]]; then
+                  found_type2="true"
+                fi
+              done
+              if [[ "$found_type1" == "true" ]]; then
+                echo "Found one application/vnd.konflux-ci.attached-artifact.foo+txt mediaType"
+              else
+                echo "ERROR: Didn't find application/vnd.konflux-ci.attached-artifact.foo+txt mediaType"
+                TESTS_FAILED="true"
+                failure_num=$((failure_num + 1))
+              fi
+              if [[ "$found_type2" == "true" ]]; then
+                echo "Found one application/vnd.konflux-ci.test-artifact.foobar mediaType"
+              else
+                echo "ERROR: Didn't find application/vnd.konflux-ci.test-artifact.foobar mediaType"
+                TESTS_FAILED="true"
+                failure_num=$((failure_num + 1))
+              fi
+
+              # Test attaching directories
+              attach-helper --subject $REPO:$TAG --artifact-type "application/vnd.konflux-ci.test-directory" discoveries,discoveries-digest.txt
+
+              ## Ensure that the the artifact (custom) and media (auto) types are as expected for directories
+              oci_path=$(cat discoveries-digest.txt)
+              oras discover --format json --artifact-type "application/vnd.konflux-ci.test-directory" $REPO:$TAG | yq -e '.manifests[].reference' > referenced_directory_artifacts
+              if [ ! "$(cat referenced_directory_artifacts | wc -l)" == "1"]; then
+                echo "ERROR: Improper number of referenced artifacts for type application/vnd.konflux-ci.test-directory"
+                cat referenced_directory_artifacts
+                TESTS_FAILED="true"
+                failure_num=$((failure_num + 1))
+              fi
+              artifactType=$(oras manifest fetch --pretty $(cat referenced_directory_artifacts | head -n 1) | yq -e '.artifactType')
+              mediaType=$(oras manifest fetch --pretty $(cat referenced_directory_artifacts | head -n 1) | yq -e '.layers[].mediaType')
+              if [[ "$artifactType" == "application/vnd.konflux-ci.test-directory" ]]; then
+                echo "Directory artifactType matches"
+              else
+                echo "ERROR: Directory artifact type was ${artifactType}/nexpected: application/vnd.konflux-ci.test-directory"
+                TESTS_FAILED="true"
+                failure_num=$((failure_num + 1))
+              fi
+              if [[ "$mediaType" == "application/vnd.konflux-ci.test-directory.discoveries+gzip" ]]; then
+                echo "Directory mediaType matches"
+              else
+                echo "ERROR: Directory media type was ${mediaType}/nexpected: application/vnd.konflux-ci.test-directory.discoveries+gzip"
+                TESTS_FAILED="true"
+                failure_num=$((failure_num + 1))
+              fi
+
+              ## Ensure that the blob digest matches for a directory 
+              oras_digest=$(oras manifest fetch --pretty $(cat referenced_directory_artifacts | head -n 1) | yq -e ".layers[0].digest")
+              if [ "${oras_digest}" == "$(echo -n ${oci_path} | cut -d@ -f2)" ]; then
+                echo "Directory blob digests match"
+              else
+                echo "ERROR: Directory blob digest does not match returned value"
+                TESTS_FAILED="true"
+                failure_num=$((failure_num + 1))
+              fi
+
+              ## Ensure that directory content matches
+              mkdir unzip
+              oras blob fetch ${oci_path#*oci:} --output - | tar -C "unzip" "-zxpf" -
+              diff unzip discoveries > dir_diff.txt
+              if [ $? -eq 0 ]; then
+                echo "Unzipped directory result"
+              else
+                TESTS_FAILED="true"
+                failure_num=$((failure_num + 1))
+                echo "ERROR: Unzipped directories do not match"
+                cat dir_diff.txt
+              fi
+
+              # Test attaching multiple files
+              echo "one" > one.txt
+              echo "two" > two.txt
+              attach-helper --subject $REPO:$TAG --artifact-type "application/vnd.konflux-ci.multiple-artifacts" one.txt two.txt
+              oras discover --format json --artifact-type "application/vnd.konflux-ci.multiple-artifacts" $REPO:$TAG | yq -e '.manifests[].reference' > referenced_multiple_artifacts
+              if [ ! "$(cat referenced_multiple_artifacts | wc -l)" == "1"]; then
+                echo "ERROR: All artifacts attached in one call not found"
+                cat referenced_multiple_artifacts
+                TESTS_FAILED="true"
+                failure_num=$((failure_num + 1))
+              else
+                echo "Attaching multiple artifacts works"
+              fi
+
+              if [ "$TESTS_FAILED" == "true" ]; then
+                echo "$failure_num tests failed."
                 exit 1
               fi
