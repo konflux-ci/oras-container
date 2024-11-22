@@ -30,41 +30,15 @@ spec:
     value: .
   - name: revision
     value: '{{revision}}'
+  - name: build-platforms
+    value:
+      - localhost
+      - linux/arm64
+      - linux/ppc64le
+      - linux/s390x
   pipelineRef:
     name: build-pipeline
   workspaces:
-    - name: workspace-amd64
-      volumeClaimTemplate:
-        spec:
-          accessModes:
-            - ReadWriteOnce
-          resources:
-            requests:
-              storage: 1Gi
-    - name: workspace-arm64
-      volumeClaimTemplate:
-        spec:
-          accessModes:
-            - ReadWriteOnce
-          resources:
-            requests:
-              storage: 1Gi
-    - name: workspace-ppc64le
-      volumeClaimTemplate:
-        spec:
-          accessModes:
-            - ReadWriteOnce
-          resources:
-            requests:
-              storage: 1Gi
-    - name: workspace-s390x
-      volumeClaimTemplate:
-        spec:
-          accessModes:
-            - ReadWriteOnce
-          resources:
-            requests:
-              storage: 1Gi
-    - name: git-auth
-      secret:
-        secretName: '{{ git_auth_secret }}'
+  - name: git-auth
+    secret:
+      secretName: '{{ git_auth_secret }}'
