@@ -33,6 +33,8 @@ spec:
       - linux/arm64
       - linux/ppc64le
       - linux/s390x
+  - name: build-source-image
+    value: true
   pipelineRef:
     name: build-pipeline
   workspaces:
