@@ -23,7 +23,7 @@ RUN go mod vendor
 RUN make "build-$(echo $TARGETPLATFORM | sed s/\\/v8// | tr / -)"
 RUN mv ${ORASPKG}/bin/$(echo $TARGETPLATFORM | sed s/\\/v8//)/oras ${ORASPKG}/bin/oras
 
-FROM quay.io/konflux-ci/yq:latest@sha256:15a4bff3229069034b1fc7d6d3a7c9b06edf8c1c5f6f27d49bf4b31de823168a as yq
+FROM quay.io/konflux-ci/yq:latest@sha256:a3d6f265688aad6ac70c5e71e241bf644ab020387231faca4d855453c5cd639c as yq
 
 FROM registry.access.redhat.com/ubi9:latest@sha256:1057dab827c782abcfb9bda0c3900c0966b5066e671d54976a7bcb3a2d1a5e53
 ARG ORASPKG
