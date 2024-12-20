@@ -115,7 +115,7 @@ if [ -n "${distribution_spec}" ]; then
     use_distribution_spec+=(--distribution-spec ${distribution_spec})
 fi
 oras attach "${oras_opts[@]}" --no-tty --registry-config <(select-oci-auth ${subject}) --artifact-type "${artifact_type}" \
-    "${use_distribution_spec[@]}" "${subject}" "${file_name}:${media_type}" | tail -n 1 | cut -d: -f3 > "${digest_file}"
+    "${use_distribution_spec[@]}" "${subject}" "${file_name}:${media_type}" --format go-template --template '{{.digest}}' > "${digest_file}"
 popd > /dev/null
 
 echo 'Artifacts attached'
