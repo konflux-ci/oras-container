@@ -186,7 +186,7 @@ spec:
               ## Test to make sure that digest matches
               digest_pullspec=$(oras discover --format json --artifact-type "application/vnd.konflux-ci.attached-artifact" $REPO:$TAG | yq -e '.manifests[].reference')
               digestfile_content=$(cat foo-digest.txt)
-              if [ "${digest_pullspec}" == "${REPO}@sha256:${digestfile_content}" ]; then
+              if [ "${digest_pullspec}" == "${REPO}@${digestfile_content}" ]; then
                 echo "Digestfile properly created"
               else
                 echo "ERROR: Reported digest ${digestfile_content} doesn't match ${digest_pullspec}"
@@ -194,6 +194,15 @@ spec:
                 TESTS_FAILED="true"
                 failure_num=$((failure_num + 1))
               fi
+
+              ## Ensure that the digestfile doesn't have a newline
+              if ! [ "$(cat -vet foo-digest.txt)" = "$(cat foo-digest.txt)" ]; then
+                echo "ERROR: ${digestfile_content} ends in a whitespace"
+                cat foo-digest.txt
+                TESTS_FAILED="true"
+                failure_num=$((failure_num + 1))
+              fi
+
 
               # Test attaching directories
               attach-helper --subject $REPO:$TAG --artifact-type "application/vnd.konflux-ci.test-directory" --digestfile discoveries-digest.txt discoveries
@@ -227,16 +236,16 @@ spec:
 
               # Ensure that the manifest digest matches for a directory 
               directory_shasum=$(oras manifest fetch $(cat referenced_directory_artifacts | head -n 1) | sha256sum | tr -d "[:space:]-")
-              if [ "${directory_shasum}" == "${directory_digest}" ]; then
+              if [ "sha256:${directory_shasum}" == "${directory_digest}" ]; then
                 echo "Directory blob digests match"
               else
-                echo "ERROR: Directory blob digest does not match returned value"
+                echo "ERROR: Directory blob digest sha256:${directory_shasum} does not match returned value ${directory_digest}"
                 TESTS_FAILED="true"
                 failure_num=$((failure_num + 1))
               fi
 
               ## Ensure that directory content matches
-              oras pull ${REPO}@sha256:${directory_digest}
+              oras pull ${REPO}@${directory_digest}
               diff discoveries discoveries-reference > dir_diff.txt
               if [ $? -eq 0 ]; then
                 echo "Fetched directory matches"
