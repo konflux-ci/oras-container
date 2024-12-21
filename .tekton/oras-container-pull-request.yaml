@@ -37,6 +37,8 @@ spec:
       - linux/ppc64le
       # Disabling s390x on PRs at least for now due to reliability issues
       # - linux/s390x
+  - name: build-source-image
+    value: true
   pipelineRef:
     name: build-pipeline
   workspaces:
