@@ -25,7 +25,7 @@ RUN mv ${ORASPKG}/bin/$(echo $TARGETPLATFORM | sed s/\\/v8//)/oras ${ORASPKG}/bi
 
 FROM quay.io/konflux-ci/yq:latest@sha256:a3d6f265688aad6ac70c5e71e241bf644ab020387231faca4d855453c5cd639c as yq
 
-FROM registry.access.redhat.com/ubi9:latest@sha256:aa149a2e32725b0ea9c8ac97d25e65a894b1a4b2f220dd7670d890e60a733a14
+FROM registry.access.redhat.com/ubi9:latest@sha256:38791b293262ac2169eca2717e68e626a047d2b89fbd1da544db24ed0204efeb
 ARG ORASPKG
 RUN mkdir /licenses
 RUN useradd -r  --uid=65532 --create-home --shell /bin/bash oras
