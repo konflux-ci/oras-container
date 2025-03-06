@@ -130,21 +130,21 @@ spec:
               oras discover -v --format tree --artifact-type "application/vnd.konflux-ci.attached-artifact" $REPO:$TAG > discoveries/default_attached
               oras discover -v --format tree --artifact-type "application/vnd.konflux-ci.test-artifact" $REPO:$TAG > discoveries/custom_attached
 
-              if [[ "$(cat discoveries/all_attached | wc -l)" == "7" ]]; then
+              if [[ "$(cat discoveries/all_attached | wc -l)" == "9" ]]; then
                 echo "Two artifacts attached"
               else
                 echo "ERROR: All attached artifacts not found"
                 TESTS_FAILED="true"
                 failure_num=$((failure_num + 1))
               fi
-              if [[ "$(cat discoveries/default_attached | wc -l)" == "4" ]]; then
+              if [[ "$(cat discoveries/default_attached | wc -l)" == "5" ]]; then
                 echo "One artifact attached with type application/vnd.konflux-ci.attached-artifact"
               else
                 echo "ERROR: Artifact attachment application/vnd.konflux-ci.attached-artifact not found"
                 TESTS_FAILED="true"
                 failure_num=$((failure_num + 1))
               fi
-              if [[ "$(cat discoveries/custom_attached | wc -l)" == "4" ]]; then
+              if [[ "$(cat discoveries/custom_attached | wc -l)" == "5" ]]; then
                 echo "One artifact attached with type application/vnd.konflux-ci.test-artifact"
               else
                 echo "ERROR: Artifact attachment application/vnd.konflux-ci.test-artifact not found"
