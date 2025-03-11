@@ -111,6 +111,54 @@ spec:
                 echo "Received ${OUTPUT}"
               fi
 
+              ## Test select-oci-auth with different pull specs
+              mv ~/.docker/config.json ~/.docker/config.json.bak
+              cat  > ~/.docker/config.json <<EOF
+              {
+                "auths": {
+                  "https://index.docker.io/v1/": {
+                    "auth": "mydockerauth"
+                  },
+                  "quay.io/myorg/myrepo": {
+                    "auth": "myquayauth"
+                  }
+                }
+              }
+              EOF
+
+              # Test select-oci-auth pull specs that don't have an entry in the config
+              if select-oci-auth quay.io:443/nonexisting/repo > /dev/null 2>&1; then
+                TESTS_FAILED="true"
+                failure_num=$((failure_num + 1))
+                echo "ERROR: select-oci-auth should have failed with no auth entry"
+              else
+                echo "select-oci-auth failed as expected"
+              fi
+
+              # Test select-oci-auth a docker.io pull spec
+              select-oci-auth docker.io/library/busybox | tee auth.json
+              if [ "$(yq '.auths | length' auth.json)" != 1 ] \
+                  || [ "$(yq -r '.auths."https://index.docker.io/v1/".auth' auth.json)" != "mydockerauth" ]; then
+                TESTS_FAILED="true"
+                failure_num=$((failure_num + 1))
+                echo "ERROR: select-oci-auth failed to create auth.json for docker.io"
+              else
+                echo "select-oci-auth succeeded for docker.io"
+              fi
+
+              # Test select-oci-auth a quay.io pull spec
+              select-oci-auth quay.io/myorg/myrepo | tee auth.json
+              if [ "$(yq '.auths | length' auth.json)" != 1 ] \
+                  || [ "$(yq -r '.auths."quay.io".auth' auth.json)" != "myquayauth" ]; then
+                TESTS_FAILED="true"
+                failure_num=$((failure_num + 1))
+                echo "ERROR: select-oci-auth failed to create auth.json for quay.io"
+              else
+                echo "select-oci-auth succeeded for quay.io"
+              fi
+
+              mv ~/.docker/config.json.bak ~/.docker/config.json
+
               ## Test attaching simple files
               attach-helper --subject $REPO:$TAG --digestfile foo-digest.txt foo.txt
               attach-helper --subject $REPO:$TAG --artifact-type "application/vnd.konflux-ci.test-artifact" --media-type-name "foobar" check.txt
@@ -234,7 +282,7 @@ spec:
                 failure_num=$((failure_num + 1))
               fi
 
-              # Ensure that the manifest digest matches for a directory 
+              # Ensure that the manifest digest matches for a directory
               directory_shasum=$(oras manifest fetch $(cat referenced_directory_artifacts | head -n 1) | sha256sum | tr -d "[:space:]-")
               if [ "sha256:${directory_shasum}" == "${directory_digest}" ]; then
                 echo "Directory blob digests match"
