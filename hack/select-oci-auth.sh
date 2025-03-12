@@ -47,4 +47,3 @@ fi
 >&2 echo "Token not found for $original_ref"
 
 echo -n '{"auths": {}}'
-exit 1
