@@ -85,6 +85,19 @@ spec:
                 failure_num=$((failure_num + 1))
               fi
 
+              ## Test selecting registry auth when missing credentials
+              FAKE_REPO="fake.io/foo/bar"
+              echo "Extracting relevant OCI auth for $FAKE_REPO"
+              select-oci-auth $FAKE_REPO > empty-auth.json
+
+              if [ "$(cat empty-auth.json)" == '{"auths": {}}' ]; then
+                echo "Auth file contains no credentials as expected"
+              else
+                echo "ERROR: Auth file contains credentials when it shouldn't"
+                TESTS_FAILED="true"
+                failure_num=$((failure_num + 1))
+              fi
+
               ## Test isolating registry auth and pushing
               echo "Extracting relevant OCI auth for $REPO"
               select-oci-auth $REPO > auth.json
