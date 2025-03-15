@@ -28,20 +28,31 @@ ref="$(get-reference-base ${original_ref})"
 registry="${ref/\/*}"
 
 if [[ -f ~/.docker/config.json ]]; then
-    while true; do
-        token=$(< ~/.docker/config.json yq '.auths["'$ref'"]')
+    # For docker.io, the auth key is always https://index.docker.io/v1/
+    if [ "$registry" = "docker.io" ]; then
+        registry="https://index.docker.io/v1/"
+        token=$(< ~/.docker/config.json yq '.auths["'$registry'"]')
         if [[ "$token" != "null" ]]; then
-            >&2 echo "Using token for $ref"
+            >&2 echo "Using token for $registry"
             echo -n '{"auths": {"'$registry'": '$token'}}' | yq .
             exit 0
         fi
+    else
+        while true; do
+            token=$(< ~/.docker/config.json yq '.auths["'$ref'"]')
+            if [[ "$token" != "null" ]]; then
+                >&2 echo "Using token for $ref"
+                echo -n '{"auths": {"'$registry'": '$token'}}' | yq .
+                exit 0
+            fi
 
-        if [[ "$ref" != *"/"* ]]; then
-            break
-        fi
+            if [[ "$ref" != *"/"* ]]; then
+                break
+            fi
 
-        ref="${ref%*/*}"
-    done
+            ref="${ref%*/*}"
+        done
+    fi
 fi
 
 >&2 echo "Token not found for $original_ref"
