@@ -85,19 +85,6 @@ spec:
                 failure_num=$((failure_num + 1))
               fi
 
-              ## Test selecting registry auth when missing credentials
-              FAKE_REPO="fake.io/foo/bar"
-              echo "Extracting relevant OCI auth for $FAKE_REPO"
-              select-oci-auth $FAKE_REPO > empty-auth.json
-
-              if [ "$(cat empty-auth.json)" == '{"auths": {}}' ]; then
-                echo "Auth file contains no credentials as expected"
-              else
-                echo "ERROR: Auth file contains credentials when it shouldn't"
-                TESTS_FAILED="true"
-                failure_num=$((failure_num + 1))
-              fi
-
               ## Test isolating registry auth and pushing
               echo "Extracting relevant OCI auth for $REPO"
               select-oci-auth $REPO > auth.json
@@ -123,6 +110,73 @@ spec:
                 echo "ERROR: Expecting hello world"
                 echo "Received ${OUTPUT}"
               fi
+
+              ## Test select-oci-auth with different pull specs
+              mv ~/.docker/config.json ~/.docker/config.json.bak
+              cat  > ~/.docker/config.json <<EOF
+              {
+                "auths": {
+                  "https://index.docker.io/v1/": {
+                    "auth": "mydockerauth"
+                  },
+                  "quay.io/myorg/myrepo": {
+                    "auth": "myquayauth"
+                  }
+                }
+              }
+              EOF
+
+              # Test select-oci-auth pull specs that don't have an entry in the config
+              echo "Extracting relevant OCI auth for a non-existent repo"
+              select-oci-auth "fake.io/foo/bar" > empty-auth.json
+              if [ ! $? -eq 0 ]; then
+                TESTS_FAILED="true"
+                failure_num=$((failure_num + 1))
+                echo "ERROR: select-oci-auth returned a non-zero code"
+              fi
+              if [ "$(cat empty-auth.json)" == '{"auths": {}}' ]; then
+                echo "Auth file contains no credentials as expected"
+              else
+                echo "ERROR: Auth file contains credentials when it shouldn't"
+                TESTS_FAILED="true"
+                failure_num=$((failure_num + 1))
+              fi
+
+              # Test select-oci-auth a docker.io pull spec
+              echo "Extracting relevant OCI auth for a docker.io pull spec"
+              select-oci-auth docker.io/library/busybox | tee auth.json
+              if [ ! $? -eq 0 ]; then
+                TESTS_FAILED="true"
+                failure_num=$((failure_num + 1))
+                echo "ERROR: select-oci-auth returned a non-zero code"
+              fi
+              if [ "$(yq '.auths | length' auth.json)" != 1 ] \
+                  || [ "$(yq -r '.auths."https://index.docker.io/v1/".auth' auth.json)" != "mydockerauth" ]; then
+                TESTS_FAILED="true"
+                failure_num=$((failure_num + 1))
+                echo "ERROR: select-oci-auth failed to create auth.json for docker.io"
+              else
+                echo "select-oci-auth succeeded for docker.io"
+              fi
+
+              # Test select-oci-auth a quay.io pull spec
+              echo "Extracting relevant OCI auth for a quay.io pull spec"
+              select-oci-auth quay.io/myorg/myrepo | tee auth.json
+              if [ ! $? -eq 0 ]; then
+                TESTS_FAILED="true"
+                failure_num=$((failure_num + 1))
+                echo "ERROR: select-oci-auth returned a non-zero code"
+              fi
+              if [ "$(yq '.auths | length' auth.json)" != 1 ] \
+                  || [ "$(yq -r '.auths."quay.io".auth' auth.json)" != "myquayauth" ]; then
+                TESTS_FAILED="true"
+                failure_num=$((failure_num + 1))
+                echo "ERROR: select-oci-auth failed to create auth.json for quay.io"
+              else
+                echo "select-oci-auth succeeded for quay.io"
+              fi
+
+              mv ~/.docker/config.json.bak ~/.docker/config.json
 
               ## Test attaching simple files
               attach-helper --subject $REPO:$TAG --digestfile foo-digest.txt foo.txt
@@ -247,7 +301,7 @@ spec:
                 failure_num=$((failure_num + 1))
               fi
 
-              # Ensure that the manifest digest matches for a directory 
+              # Ensure that the manifest digest matches for a directory
               directory_shasum=$(oras manifest fetch $(cat referenced_directory_artifacts | head -n 1) | sha256sum | tr -d "[:space:]-")
               if [ "sha256:${directory_shasum}" == "${directory_digest}" ]; then
                 echo "Directory blob digests match"
