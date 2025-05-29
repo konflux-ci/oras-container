@@ -25,6 +25,8 @@ RUN mv ${ORASPKG}/bin/$(echo $TARGETPLATFORM | sed s/\\/v8//)/oras ${ORASPKG}/bi
 
 FROM quay.io/konflux-ci/yq:latest@sha256:5ff4dd745c6f4cc67ae4f00fd2a38dd31f7d99c95dd7ad4476d6a6307a0f40a0 as yq
 
+FROM quay.io/konflux-ci/konflux-test:v1.4.25@sha256:78f5fd149f6fcd1e8ab8c7227cfb82c1be2eba0bbda49f033b5d82e9154414b2 as konflux-test
+
 FROM registry.access.redhat.com/ubi9/ubi-minimal:latest@sha256:92b1d5747a93608b6adb64dfd54515c3c5a360802db4706765ff3d8470df6290
 ARG ORASPKG
 RUN mkdir /licenses
@@ -34,6 +36,7 @@ COPY --from=yq /usr/bin/yq /usr/bin/yq
 
 COPY --from=builder ${ORASPKG}/bin/oras /usr/bin/oras
 COPY --from=builder ${ORASPKG}/LICENSE /licenses/LICENSE
+COPY --from=konflux-test /utils.sh /utils.sh
 COPY hack/attach.sh /usr/local/bin/attach-helper
 COPY hack/get-reference-base.sh /usr/local/bin/get-reference-base
 COPY hack/oras-options.sh /usr/local/bin/oras-options
