@@ -25,6 +25,8 @@ RUN mv ${ORASPKG}/bin/$(echo $TARGETPLATFORM | sed s/\\/v8//)/oras ${ORASPKG}/bi
 
 FROM quay.io/konflux-ci/yq:latest@sha256:5ff4dd745c6f4cc67ae4f00fd2a38dd31f7d99c95dd7ad4476d6a6307a0f40a0 as yq
 
+FROM quay.io/konflux-ci/buildah-task:latest@sha256:b82d465a06c926882d02b721cf8a8476048711332749f39926a01089cf85a3f9 AS buildah-task-image
+
 FROM registry.access.redhat.com/ubi9/ubi-minimal:latest@sha256:92b1d5747a93608b6adb64dfd54515c3c5a360802db4706765ff3d8470df6290
 ARG ORASPKG
 RUN mkdir /licenses
@@ -37,8 +39,8 @@ COPY --from=builder ${ORASPKG}/LICENSE /licenses/LICENSE
 COPY hack/attach.sh /usr/local/bin/attach-helper
 COPY hack/get-reference-base.sh /usr/local/bin/get-reference-base
 COPY hack/oras-options.sh /usr/local/bin/oras-options
-COPY hack/retry.sh /usr/local/bin/retry
 COPY hack/select-oci-auth.sh /usr/local/bin/select-oci-auth
+COPY --from=buildah-task-image /usr/bin/retry /usr/bin/
 
 WORKDIR /home/oras
 USER 65532:65532
