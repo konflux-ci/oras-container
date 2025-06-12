@@ -92,7 +92,7 @@ spec:
               # Test pushing directly with oras
               echo "Pushing foo.txt to $REPO:$TAG"
               echo -n "hello world" > foo.txt
-              oras push --no-tty --registry-config auth.json $REPO:$TAG foo.txt:text/plain
+              retry oras push --no-tty --registry-config auth.json $REPO:$TAG foo.txt:text/plain
 
               mv foo.txt check.txt
 
