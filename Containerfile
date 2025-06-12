@@ -13,7 +13,7 @@
 
 ARG ORASPKG=/oras
 
-FROM registry.access.redhat.com/ubi9/go-toolset:9.5-1743094161 as builder
+FROM registry.access.redhat.com/ubi9/go-toolset:9.6-1749052980 as builder
 ARG TARGETPLATFORM
 ARG ORASPKG
 #RUN dnf -y install git make && dnf -y clean all
