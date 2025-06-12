@@ -31,15 +31,18 @@ spec:
     value: '{{revision}}'
   - name: build-platforms
     value:
-      - localhost
-      - linux/arm64
-      - linux/ppc64le
-      - linux/s390x
+    - localhost
+    - linux/arm64
+    - linux/ppc64le
+    - linux/s390x
   - name: build-source-image
-    value: true
+    value: "true"
   pipelineRef:
     name: build-pipeline
+  taskRunTemplate:
+    serviceAccountName: build-pipeline-oras-container
   workspaces:
   - name: git-auth
     secret:
       secretName: '{{ git_auth_secret }}'
+status: {}
