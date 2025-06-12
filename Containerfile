@@ -14,6 +14,7 @@
 ARG ORASPKG=/oras
 
 FROM registry.access.redhat.com/ubi9/go-toolset:9.6-1749052980 as builder
+
 ARG TARGETPLATFORM
 ARG ORASPKG
 #RUN dnf -y install git make && dnf -y clean all
@@ -25,7 +26,10 @@ RUN mv ${ORASPKG}/bin/$(echo $TARGETPLATFORM | sed s/\\/v8//)/oras ${ORASPKG}/bi
 
 FROM quay.io/konflux-ci/yq:latest@sha256:13a172e5390b87074e7e4515d3d5cb34025714e7efc8244e46029cfad40bf7b3 as yq
 
+FROM quay.io/konflux-ci/buildah-task:latest@sha256:b82d465a06c926882d02b721cf8a8476048711332749f39926a01089cf85a3f9 AS buildah-task-image
+
 FROM registry.access.redhat.com/ubi9/ubi-minimal:latest@sha256:f172b3082a3d1bbe789a1057f03883c1113243564f01cd3020e27548b911d3f8
+
 ARG ORASPKG
 RUN mkdir /licenses
 RUN useradd -r  --uid=65532 --create-home --shell /bin/bash oras
@@ -37,8 +41,8 @@ COPY --from=builder ${ORASPKG}/LICENSE /licenses/LICENSE
 COPY hack/attach.sh /usr/local/bin/attach-helper
 COPY hack/get-reference-base.sh /usr/local/bin/get-reference-base
 COPY hack/oras-options.sh /usr/local/bin/oras-options
-COPY hack/retry.sh /usr/local/bin/retry
 COPY hack/select-oci-auth.sh /usr/local/bin/select-oci-auth
+COPY --from=buildah-task-image /usr/bin/retry /usr/bin/
 
 WORKDIR /home/oras
 USER 65532:65532
