@@ -30,6 +30,12 @@ FROM quay.io/konflux-ci/buildah-task:latest@sha256:121ccc64ade7c25fa85e9476d6a31
 
 FROM registry.access.redhat.com/ubi9/ubi-minimal:latest@sha256:6d5a6576c83816edcc0da7ed62ba69df8f6ad3cbe659adde2891bfbec4dbf187
 
+RUN microdnf install -y \
+    --setopt install_weak_deps=0 \
+    --nodocs \
+    openssl && \
+    microdnf clean all
+
 ARG ORASPKG
 RUN mkdir /licenses
 RUN useradd -r  --uid=65532 --create-home --shell /bin/bash oras
