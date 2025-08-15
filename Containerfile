@@ -13,7 +13,7 @@
 
 ARG ORASPKG=/oras
 
-FROM registry.access.redhat.com/ubi9/go-toolset:9.6-1754467841 as builder
+FROM registry.access.redhat.com/ubi9/go-toolset:9.6-1755074415 as builder
 
 ARG TARGETPLATFORM
 ARG ORASPKG
