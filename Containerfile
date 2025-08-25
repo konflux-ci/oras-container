@@ -50,6 +50,7 @@ COPY hack/oras-options.sh /usr/local/bin/oras-options
 COPY hack/select-oci-auth.sh /usr/local/bin/select-oci-auth
 COPY --from=buildah-task-image /usr/bin/retry /usr/local/bin/
 
+RUN mkdir /workspace && chown oras:oras /workspace
 WORKDIR /workspace
 USER 65532:65532
 
