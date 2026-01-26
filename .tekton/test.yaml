@@ -22,15 +22,15 @@ spec:
                 value: $(params.SNAPSHOT)
             script: |
               #!/bin/bash
-              echo -e "Grabbing a copy of yq"
+              echo -e "📦 Grabbing a copy of yq"
               oc image extract --confirm quay.io/konflux-ci/yq:latest --path=/usr/bin/yq:/usr/bin/. && chmod +x /usr/bin/yq
 
-              echo -e "Testing Snapshot:\n ${SNAPSHOT}"
+              echo -e "🧪 Testing Snapshot:\n ${SNAPSHOT}"
               TESTS_FAILED="false"
               failure_num=0
 
               IMAGE=$(echo ${SNAPSHOT} | yq -r '.components[].containerImage')
-              echo -e "Found image ${IMAGE}"
+              echo -e "🔍 Found image ${IMAGE}"
 
               # Grab binaries from the image
               oc image extract --confirm ${IMAGE} --path=/usr/bin/oras:/usr/bin/. && chmod +x /usr/bin/oras
@@ -55,60 +55,60 @@ spec:
               get-reference-base quay.io/test/foo@sha256:aaaa > test_base6
 
               if [[ $(cmp -s base_reference_port test_base1) -ne 0 ]]; then
-                echo "ERROR: Incorrect reference isolation with registry port and tag"
+                echo "❌ ERROR: Incorrect reference isolation with registry port and tag"
                 TESTS_FAILED="true"
                 failure_num=$((failure_num + 1))
               fi
               if [[ $(cmp -s base_reference_port test_base2) -ne 0 ]]; then
-                echo "ERROR: Incorrect reference isolation with registry port and digest"
+                echo "❌ ERROR: Incorrect reference isolation with registry port and digest"
                 TESTS_FAILED="true"
                 failure_num=$((failure_num + 1))
               fi
               if [[ $(cmp -s base_reference_port test_base3) -ne 0 ]]; then
-                echo "ERROR: Incorrect reference isolation with registry port, tag, and digest"
+                echo "❌ ERROR: Incorrect reference isolation with registry port, tag, and digest"
                 TESTS_FAILED="true"
                 failure_num=$((failure_num + 1))
               fi
               if [[ $(cmp -s base_reference test_base4) -ne 0 ]]; then
-                echo "ERROR: Incorrect reference isolation with tag and digest"
+                echo "❌ ERROR: Incorrect reference isolation with tag and digest"
                 TESTS_FAILED="true"
                 failure_num=$((failure_num + 1))
               fi
               if [[ $(cmp -s base_reference test_base5) -ne 0 ]]; then
-                echo "ERROR: Incorrect reference isolation with tag"
+                echo "❌ ERROR: Incorrect reference isolation with tag"
                 TESTS_FAILED="true"
                 failure_num=$((failure_num + 1))
               fi
               if [[ $(cmp -s base_reference test_base6) -ne 0 ]]; then
-                echo "ERROR: Incorrect reference isolation with digest"
+                echo "❌ ERROR: Incorrect reference isolation with digest"
                 TESTS_FAILED="true"
                 failure_num=$((failure_num + 1))
               fi
 
               ## Test isolating registry auth and pushing
-              echo "Extracting relevant OCI auth for $REPO"
+              echo "🔐 Extracting relevant OCI auth for $REPO"
               select-oci-auth $REPO > auth.json
 
               # Test pushing directly with oras
-              echo "Pushing foo.txt to $REPO:$TAG"
+              echo "⬆️  Pushing foo.txt to $REPO:$TAG"
               echo -n "hello world" > foo.txt
               retry oras push --no-tty --registry-config auth.json $REPO:$TAG foo.txt:text/plain
 
               mv foo.txt check.txt
 
               # Test pulling directly with oras, ensuring that the file content is unchanged
-              echo "Pulling foo.txt to $REPO:$TAG"
+              echo "⬇️  Pulling foo.txt to $REPO:$TAG"
               oras pull --no-tty --registry-config auth.json $REPO:$TAG
               OUTPUT=$(cat foo.txt)
 
               diff foo.txt check.txt > diff.txt
               if [ $? -eq 0 ]; then
-                echo "Recieved the expected output"
+                echo "✅ Recieved the expected output"
               else
                 TESTS_FAILED="true"
                 failure_num=$((failure_num + 1))
-                echo "ERROR: Expecting hello world"
-                echo "Received ${OUTPUT}"
+                echo "❌ ERROR: Expecting hello world"
+                echo "   Received ${OUTPUT}"
               fi
 
               ## Test select-oci-auth with different pull specs
@@ -127,53 +127,53 @@ spec:
               EOF
 
               # Test select-oci-auth pull specs that don't have an entry in the config
-              echo "Extracting relevant OCI auth for a non-existent repo"
+              echo "🔐 Extracting relevant OCI auth for a non-existent repo"
               select-oci-auth "fake.io/foo/bar" > empty-auth.json
               if [ ! $? -eq 0 ]; then
                 TESTS_FAILED="true"
                 failure_num=$((failure_num + 1))
-                echo "ERROR: select-oci-auth returned a non-zero code"
+                echo "❌ ERROR: select-oci-auth returned a non-zero code"
               fi
               if [ "$(cat empty-auth.json)" == '{"auths": {}}' ]; then
-                echo "Auth file contains no credentials as expected"
+                echo "✅ Auth file contains no credentials as expected"
               else
-                echo "ERROR: Auth file contains credentials when it shouldn't"
+                echo "❌ ERROR: Auth file contains credentials when it shouldn't"
                 TESTS_FAILED="true"
                 failure_num=$((failure_num + 1))
               fi
 
               # Test select-oci-auth a docker.io pull spec
-              echo "Extracting relevant OCI auth for a docker.io pull spec"
+              echo "🔐 Extracting relevant OCI auth for a docker.io pull spec"
               select-oci-auth docker.io/library/busybox | tee auth.json
               if [ ! $? -eq 0 ]; then
                 TESTS_FAILED="true"
                 failure_num=$((failure_num + 1))
-                echo "ERROR: select-oci-auth returned a non-zero code"
+                echo "❌ ERROR: select-oci-auth returned a non-zero code"
               fi
               if [ "$(yq '.auths | length' auth.json)" != 1 ] \
                   || [ "$(yq -r '.auths."https://index.docker.io/v1/".auth' auth.json)" != "mydockerauth" ]; then
                 TESTS_FAILED="true"
                 failure_num=$((failure_num + 1))
-                echo "ERROR: select-oci-auth failed to create auth.json for docker.io"
+                echo "❌ ERROR: select-oci-auth failed to create auth.json for docker.io"
               else
-                echo "select-oci-auth succeeded for docker.io"
+                echo "✅ select-oci-auth succeeded for docker.io"
               fi
 
               # Test select-oci-auth a quay.io pull spec
-              echo "Extracting relevant OCI auth for a quay.io pull spec"
+              echo "🔐 Extracting relevant OCI auth for a quay.io pull spec"
               select-oci-auth quay.io/myorg/myrepo | tee auth.json
               if [ ! $? -eq 0 ]; then
                 TESTS_FAILED="true"
                 failure_num=$((failure_num + 1))
-                echo "ERROR: select-oci-auth returned a non-zero code"
+                echo "❌ ERROR: select-oci-auth returned a non-zero code"
               fi
               if [ "$(yq '.auths | length' auth.json)" != 1 ] \
                   || [ "$(yq -r '.auths."quay.io".auth' auth.json)" != "myquayauth" ]; then
                 TESTS_FAILED="true"
                 failure_num=$((failure_num + 1))
-                echo "ERROR: select-oci-auth failed to create auth.json for quay.io"
+                echo "❌ ERROR: select-oci-auth failed to create auth.json for quay.io"
               else
-                echo "select-oci-auth succeeded for quay.io"
+                echo "✅ select-oci-auth succeeded for quay.io"
               fi
 
               mv ~/.docker/config.json.bak ~/.docker/config.json
@@ -187,7 +187,7 @@ spec:
               if [ ! $? -eq 0 ]; then
                 TESTS_FAILED="true"
                 failure_num=$((failure_num + 1))
-                echo "ERROR: Files were modified when attaching."
+                echo "❌ ERROR: Files were modified when attaching."
               fi
 
               ## Check to make sure that all attachments have happened properly. Looking at both the total number
@@ -198,23 +198,23 @@ spec:
               oras discover --format tree --artifact-type "application/vnd.konflux-ci.test-artifact" $REPO:$TAG > discoveries/custom_attached
 
               if [[ "$(cat discoveries/all_attached | wc -l)" == "11" ]]; then
-                echo "Two artifacts attached"
+                echo "✅ Two artifacts attached"
               else
-                echo "ERROR: All attached artifacts not found"
+                echo "❌ ERROR: All attached artifacts not found"
                 TESTS_FAILED="true"
                 failure_num=$((failure_num + 1))
               fi
               if [[ "$(cat discoveries/default_attached | wc -l)" == "6" ]]; then
-                echo "One artifact attached with type application/vnd.konflux-ci.attached-artifact"
+                echo "✅ One artifact attached with type application/vnd.konflux-ci.attached-artifact"
               else
-                echo "ERROR: Artifact attachment application/vnd.konflux-ci.attached-artifact not found"
+                echo "❌ ERROR: Artifact attachment application/vnd.konflux-ci.attached-artifact not found"
                 TESTS_FAILED="true"
                 failure_num=$((failure_num + 1))
               fi
               if [[ "$(cat discoveries/custom_attached | wc -l)" == "6" ]]; then
-                echo "One artifact attached with type application/vnd.konflux-ci.test-artifact"
+                echo "✅ One artifact attached with type application/vnd.konflux-ci.test-artifact"
               else
-                echo "ERROR: Artifact attachment application/vnd.konflux-ci.test-artifact not found"
+                echo "❌ ERROR: Artifact attachment application/vnd.konflux-ci.test-artifact not found"
                 TESTS_FAILED="true"
                 failure_num=$((failure_num + 1))
               fi
@@ -224,7 +224,7 @@ spec:
               referenced_artifacts=$( oras discover --format json $REPO:$TAG | yq -e '.referrers[].reference')
               found_type1="false"
               found_type2="false"
-              echo "Looking at mediaType for all referenced artifacts"
+              echo "🔍 Looking at mediaType for all referenced artifacts"
               for artifact in ${referenced_artifacts[@]}; do
                 oras manifest fetch --pretty $artifact
                 mediaType=$(oras manifest fetch --pretty $artifact | yq -e '.layers[].mediaType')
@@ -236,16 +236,16 @@ spec:
                 fi
               done
               if [[ "$found_type1" == "true" ]]; then
-                echo "Found one application/vnd.konflux-ci.attached-artifact.foo+txt mediaType"
+                echo "✅ Found one application/vnd.konflux-ci.attached-artifact.foo+txt mediaType"
               else
-                echo "ERROR: Didn't find application/vnd.konflux-ci.attached-artifact.foo+txt mediaType"
+                echo "❌ ERROR: Didn't find application/vnd.konflux-ci.attached-artifact.foo+txt mediaType"
                 TESTS_FAILED="true"
                 failure_num=$((failure_num + 1))
               fi
               if [[ "$found_type2" == "true" ]]; then
-                echo "Found one application/vnd.konflux-ci.test-artifact.foobar mediaType"
+                echo "✅ Found one application/vnd.konflux-ci.test-artifact.foobar mediaType"
               else
-                echo "ERROR: Didn't find application/vnd.konflux-ci.test-artifact.foobar mediaType"
+                echo "❌ ERROR: Didn't find application/vnd.konflux-ci.test-artifact.foobar mediaType"
                 TESTS_FAILED="true"
                 failure_num=$((failure_num + 1))
               fi
@@ -254,9 +254,9 @@ spec:
               digest_pullspec=$(oras discover --format json --artifact-type "application/vnd.konflux-ci.attached-artifact" $REPO:$TAG | yq -e '.referrers[].reference')
               digestfile_content=$(cat foo-digest.txt)
               if [ "${digest_pullspec}" == "${REPO}@${digestfile_content}" ]; then
-                echo "Digestfile properly created"
+                echo "✅ Digestfile properly created"
               else
-                echo "ERROR: Reported digest ${digestfile_content} doesn't match ${digest_pullspec}"
+                echo "❌ ERROR: Reported digest ${digestfile_content} doesn't match ${digest_pullspec}"
                 cat foo-digest.txt
                 TESTS_FAILED="true"
                 failure_num=$((failure_num + 1))
@@ -264,7 +264,7 @@ spec:
 
               ## Ensure that the digestfile doesn't have a newline
               if ! [ "$(cat -vet foo-digest.txt)" = "$(cat foo-digest.txt)" ]; then
-                echo "ERROR: ${digestfile_content} ends in a whitespace"
+                echo "❌ ERROR: ${digestfile_content} ends in a whitespace"
                 cat foo-digest.txt
                 TESTS_FAILED="true"
                 failure_num=$((failure_num + 1))
@@ -279,7 +279,7 @@ spec:
               directory_digest=$(cat discoveries-digest.txt)
               oras discover --format json --artifact-type "application/vnd.konflux-ci.test-directory" $REPO:$TAG | yq -e '.referrers[].reference' > referenced_directory_artifacts
               if [ ! "$(cat referenced_directory_artifacts | wc -l)" == "1" ]; then
-                echo "ERROR: Improper number of referenced artifacts for type application/vnd.konflux-ci.test-directory"
+                echo "❌ ERROR: Improper number of referenced artifacts for type application/vnd.konflux-ci.test-directory"
                 cat referenced_directory_artifacts
                 TESTS_FAILED="true"
                 failure_num=$((failure_num + 1))
@@ -287,16 +287,16 @@ spec:
               artifactType=$(oras manifest fetch --pretty $(cat referenced_directory_artifacts | head -n 1) | yq -e '.artifactType')
               mediaType=$(oras manifest fetch --pretty $(cat referenced_directory_artifacts | head -n 1) | yq -e '.layers[].mediaType')
               if [[ "$artifactType" == "application/vnd.konflux-ci.test-directory" ]]; then
-                echo "Directory artifactType matches"
+                echo "✅ Directory artifactType matches"
               else
-                echo "ERROR: Directory artifact type was ${artifactType}/nexpected: application/vnd.konflux-ci.test-directory"
+                echo "❌ ERROR: Directory artifact type was ${artifactType}/nexpected: application/vnd.konflux-ci.test-directory"
                 TESTS_FAILED="true"
                 failure_num=$((failure_num + 1))
               fi
               if [[ "$mediaType" == "application/vnd.konflux-ci.test-directory.discoveries" ]]; then
-                echo "Directory mediaType matches"
+                echo "✅ Directory mediaType matches"
               else
-                echo "ERROR: Directory media type was ${mediaType}/nexpected: application/vnd.konflux-ci.test-directory.discoveries"
+                echo "❌ ERROR: Directory media type was ${mediaType}/nexpected: application/vnd.konflux-ci.test-directory.discoveries"
                 TESTS_FAILED="true"
                 failure_num=$((failure_num + 1))
               fi
@@ -304,9 +304,9 @@ spec:
               # Ensure that the manifest digest matches for a directory
               directory_shasum=$(oras manifest fetch $(cat referenced_directory_artifacts | head -n 1) | sha256sum | tr -d "[:space:]-")
               if [ "sha256:${directory_shasum}" == "${directory_digest}" ]; then
-                echo "Directory blob digests match"
+                echo "✅ Directory blob digests match"
               else
-                echo "ERROR: Directory blob digest sha256:${directory_shasum} does not match returned value ${directory_digest}"
+                echo "❌ ERROR: Directory blob digest sha256:${directory_shasum} does not match returned value ${directory_digest}"
                 TESTS_FAILED="true"
                 failure_num=$((failure_num + 1))
               fi
@@ -315,11 +315,11 @@ spec:
               oras pull ${REPO}@${directory_digest}
               diff discoveries discoveries-reference > dir_diff.txt
               if [ $? -eq 0 ]; then
-                echo "Fetched directory matches"
+                echo "✅ Fetched directory matches"
               else
                 TESTS_FAILED="true"
                 failure_num=$((failure_num + 1))
-                echo "ERROR: Fetched directory does not match"
+                echo "❌ ERROR: Fetched directory does not match"
                 cat dir_diff.txt
               fi
 
@@ -337,9 +337,9 @@ spec:
               # fi
 
               if [ "$TESTS_FAILED" == "true" ]; then
-                echo "$failure_num tests failed."
+                echo "💥 $failure_num tests failed."
                 exit 1
               else
-                echo "All tests passed, congrats!"
+                echo "🎉 All tests passed, congrats!"
                 exit 0
               fi
