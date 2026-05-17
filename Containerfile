@@ -28,7 +28,7 @@ FROM quay.io/konflux-ci/yq:latest@sha256:99e5b1bab471f2f84f427044815f3e81dce257b
 
 FROM quay.io/konflux-ci/buildah-task:latest@sha256:4c470b5a153c4acd14bf4f8731b5e36c61d7faafe09c2bf376bb81ce84aa5709 AS buildah-task-image
 
-FROM registry.access.redhat.com/ubi9/ubi-minimal:latest@sha256:7d4e47500f28ac3a2bff06c25eff9127ff21048538ae03ce240d57cf756acd00
+FROM registry.access.redhat.com/ubi9/ubi-minimal:latest@sha256:12db9874bd753eb98b1ab3d840e75de5d6842ac0604fbd68c012adefe97140be
 
 RUN microdnf install -y \
     --setopt install_weak_deps=0 \
