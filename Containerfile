@@ -24,7 +24,7 @@ RUN go mod vendor
 RUN make "build-$(echo $TARGETPLATFORM | sed s/\\/v8// | tr / -)"
 RUN mv ${ORASPKG}/bin/$(echo $TARGETPLATFORM | sed s/\\/v8//)/oras ${ORASPKG}/bin/oras
 
-FROM quay.io/konflux-ci/yq:latest@sha256:ac514eef5aef9f33615871cb19794edb8ad94dcb531b5065f4dc64ab1f5faae5 as yq
+FROM quay.io/konflux-ci/yq:latest@sha256:e2b71e05fdb2a81fff75da6668c99d95da4a6c64224cc1262c9ee42348171fab as yq
 
 FROM quay.io/konflux-ci/buildah-task:latest@sha256:4c470b5a153c4acd14bf4f8731b5e36c61d7faafe09c2bf376bb81ce84aa5709 AS buildah-task-image
 
